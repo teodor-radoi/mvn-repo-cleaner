@@ -36,6 +36,10 @@ public class CleanM2 {
     private static List<String> RESTRICTED_PATTERN = Lists.newArrayList("maven-metadata-", ".jar.lastUpdated", ".pom.lastUpdated");
     private static String LS = System.lineSeparator();
 
+    private static int toDelete = 0;
+    private static int deleted = 0;
+    private static int progress = 0;
+
     static {
         DELETE_MAP.put(DeleteReason.FORCED_SNAPSHOT, new HashSet<>());
         DELETE_MAP.put(DeleteReason.FORCED_SOURCE, new HashSet<>());
@@ -74,6 +78,31 @@ public class CleanM2 {
         }
     }
 
+    private static void setToDelete() {
+        toDelete = DELETE_MAP.values().stream().map(Set::size).reduce(Integer::sum).get();
+    }
+
+    private static void updateProgress() {
+        if (deleted == 0) {
+            return;
+        }
+        int percent = toDelete * 100 / deleted;
+        if (percent != progress) {
+            progress = percent;
+            log.info(progress + "% complete");
+        }
+    }
+
+    private static void increaseDeletedFiles() {
+        deleted++;
+        updateProgress();
+    }
+
+    private static void decreaseToDeleteToatal() {
+        toDelete--;
+        updateProgress();
+    }
+
     private static File evaluateM2Path(JCommander jCommander) {
         String m2Path = defaultString(argData.getM2Path(), concat(USER_HOME, ".m2"));
         File m2Dir = new File(m2Path);
@@ -98,13 +127,19 @@ public class CleanM2 {
     }
 
     private static void deleteMarked() {
+        setToDelete();
+        log.info("Will delete " + toDelete + " files");
         DELETE_MAP.values().forEach(fileSet -> {
             fileSet.forEach(file -> {
                 if (!FileUtils.deleteQuietly(file)) {
                     DELETE_FAILURE_LIST.add(file);
+                    decreaseToDeleteToatal();
+                } else {
+                    increaseDeletedFiles();
                 }
             });
         });
+        log.info("Deleted " + deleted + " files");
     }
 
     private static void processVersion() {
